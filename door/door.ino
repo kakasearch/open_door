@@ -27,13 +27,14 @@ void beep(){
 void open_door() {
   int pos;
   myservo.write(mind); 
-  delay(12*(maxd-mind));
+  delay(10*(maxd-mind));
   beep();
   delay(5000);
   for (pos = mind; pos <= maxd; pos += 5) { // goes from 0 degrees to 180 degrees
     myservo.write(pos);              // tell servo to go to position in variable 'pos'
     delay(60);                       // waits 15ms for the servo to reach the position
   };
+  tone(buzzerPin,800,500);
 }
 
 void setup() {
@@ -76,7 +77,7 @@ void loop() {
   
   // 比对收到的讯息，确定执行什么操作
   int val;
-  if (req.indexOf("gpio=1") != -1){
+  if (req.indexOf("?gpio=avsfidd") != -1){
     Serial.println('open door');//打印出收到的讯息
     open_door();
   }else {
