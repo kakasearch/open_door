@@ -1,36 +1,17 @@
 
 #include <ESP8266WiFi.h>
+#include <Servo.h>
 #ifndef STASSID
 #define STASSID "HiWiFi_5C0B98"
 #define STAPSK  "gzwl6009"
 #endif
 
 #define maxd 180
-#define mind 5
-#define buzzerPin 12 
-//D6
-#define ServoPin 14 //d5
+#define mind 25
+#define buzzerPin 14 //d5
+#define servo_pin 4 //d2
 
-long map(long x,long in_min,long in_max,long out_min,long out_max)
-{
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-
-void ServoControl(int servoAngle)
-{
-  double thisAngle = map(servoAngle, 0, 180, 500, 2500);//等比例角度值范围转换高电平持续时间范围
-  unsigned char i = 50;//50Hz 每秒的周期次数(周期/秒) 即1S 50 个周期 每个周期20ms
-  while (i--)
-  {
-    digitalWrite(ServoPin, HIGH); 
-    delayMicroseconds(thisAngle); //高电平时间
-    digitalWrite(ServoPin, LOW); 
-    delayMicroseconds(20000 - thisAngle);//每个周期20ms减去高电平持续时间
-  }
-}
-
-
-
+Servo myservo;
 const char* ssid = STASSID;
 const char* password = STAPSK;
 WiFiServer server(35614);//开启板子的port 80
@@ -43,18 +24,17 @@ void beep(){
   };
   } 
 void open_door() {
-  ServoControl(mind);
+  myservo.write(mind); 
   delay(10*(maxd-mind));
   beep();
   delay(5000);
-  ServoControl(maxd); 
+  myservo.write(maxd); 
+  delay(10*(maxd-mind));
   tone(buzzerPin,800,500);
-  delay(2000);
 }
 
 void setup() {
   pinMode(buzzerPin,OUTPUT);
-  pinMode(ServoPin,OUTPUT);
   Serial.begin(115200);//开启端口，速度为115200
   delay(10);
   // prepare GPIO2
@@ -73,6 +53,7 @@ void setup() {
   Serial.println("Server started");
   
   Serial.println(WiFi.localIP());
+  myservo.attach(servo_pin);
   open_door();
   Serial.println("servo test ok");
   pinMode(2,OUTPUT);
