@@ -1,24 +1,25 @@
-
+#define BLINKER_WIFI
+#define BLINKER_PRINT Serial
+#define BLINKER_MIOT_OUTLET
+#define BLINKER_WITHOUT_SSL
+#include <Blinker.h>
 #include <ESP8266WiFi.h>
-#ifndef STASSID
+#define blinksk "53edf7d7243f"
 #define STASSID "HiWiFi_5C0B98"
 #define STAPSK  "gzwl6009"
-#endif
+
+
 
 #define maxd 180
 #define mind 5
 #define buzzerPin 12 
 //D6
 #define ServoPin 14 //d5
-
-long map(long x,long in_min,long in_max,long out_min,long out_max)
-{
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-
+WiFiServer server(35614);//开启板子的port 80
+bool oState = false;
 void ServoControl(int servoAngle)
 {
-  double thisAngle = map(servoAngle, 0, 180, 500, 2500);//等比例角度值范围转换高电平持续时间范围
+  double thisAngle =  (servoAngle - 0) * 2000 / (180.0) + 500; map(servoAngle, 0, 180, 500, 2500);//等比例角度值范围转换高电平持续时间范围
   unsigned char i = 50;//50Hz 每秒的周期次数(周期/秒) 即1S 50 个周期 每个周期20ms
   while (i--)
   {
@@ -28,12 +29,6 @@ void ServoControl(int servoAngle)
     delayMicroseconds(20000 - thisAngle);//每个周期20ms减去高电平持续时间
   }
 }
-
-
-
-const char* ssid = STASSID;
-const char* password = STAPSK;
-WiFiServer server(35614);//开启板子的port 80
 
 void beep(){
   int i;
@@ -50,38 +45,63 @@ void open_door() {
   ServoControl(maxd); 
   tone(buzzerPin,800,500);
   delay(2000);
+  oState = false;
 }
 
-void setup() {
-  pinMode(buzzerPin,OUTPUT);
-  pinMode(ServoPin,OUTPUT);
-  Serial.begin(115200);//开启端口，速度为115200
-  delay(10);
-  // prepare GPIO2
-  // Connect to WiFi network
-  Serial.print("Connecting to ");  
-  WiFi.setAutoReconnect(true);//设置断开连接后重连
-  WiFi.begin(ssid, password);//使用WiFi开始连线
-  while (WiFi.status() != WL_CONNECTED) {//连线成功后停止跳点
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("WiFi connected");
-  // Start the server
-  server.begin();
-  Serial.println("Server started");
-  
-  Serial.println(WiFi.localIP());
-  open_door();
-  Serial.println("servo test ok");
-  pinMode(2,OUTPUT);
-  digitalWrite(2,HIGH);
+
+void miotPowerState(const String & state)
+{
+    BLINKER_LOG("need set power state: ", state);
+
+    if (state == BLINKER_CMD_ON) {
+        BlinkerMIOT.powerState("on");
+        BlinkerMIOT.print();
+        oState = true;
+    }
+    else if (state == BLINKER_CMD_OFF) {
+        BlinkerMIOT.powerState("off");
+        BlinkerMIOT.print();
+        oState = false;
+    }
 }
 
-void loop() {
-  // Check if a client has connected
-  WiFiClient client = server.available();
+void miotQuery(int32_t queryCode)
+{
+    BLINKER_LOG("MIOT Query codes: ", queryCode);
+
+    switch (queryCode)
+    {
+        case BLINKER_CMD_QUERY_ALL_NUMBER :
+            BLINKER_LOG("MIOT Query All");
+            BlinkerMIOT.powerState(oState ? "on" : "off");
+            BlinkerMIOT.print();
+            break;
+        case BLINKER_CMD_QUERY_POWERSTATE_NUMBER :
+            BLINKER_LOG("MIOT Query Power State");
+            BlinkerMIOT.powerState(oState ? "on" : "off");
+            BlinkerMIOT.print();
+            break;
+        default :
+            BlinkerMIOT.powerState(oState ? "on" : "off");
+            BlinkerMIOT.print();
+            break;
+    }
+}
+
+void dataRead(const String & data)
+{
+    BLINKER_LOG("Blinker readString: ", data);
+
+    Blinker.vibrate();
+    
+    uint32_t BlinkerTime = millis();
+    
+    Blinker.print("millis", BlinkerTime);
+}
+
+
+void server_run(){
+    WiFiClient client = server.available();
   if (!client) {
     return;
   }
@@ -101,15 +121,45 @@ void loop() {
   // 比对收到的讯息，确定执行什么操作
   if (req.indexOf("?gpio=on") != -1){
     Serial.println("open door");//打印出收到的讯息
-    open_door();
+    oState = true;
   }else {
     Serial.println("invalid request");
   }
   client.flush();//刷新
-  // Prepare the response
-  //String s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\n ok!\n";
-  // Send the response to the client
-  //client.print(s);
-  //delay(1);
-  //Serial.println("Client disonnected");
+}
+
+void setup() {
+  pinMode(buzzerPin,OUTPUT);
+  pinMode(ServoPin,OUTPUT);
+  Serial.begin(115200);//开启端口，速度为115200
+  // Connect to WiFi network
+  Serial.print("Connecting to ");  
+  // 初始化blinker
+  BLINKER_DEBUG.stream(Serial);
+  Blinker.begin(blinksk,STASSID,STAPSK);
+   Blinker.attachData(dataRead);
+    BlinkerMIOT.attachPowerState(miotPowerState);
+    BlinkerMIOT.attachQuery(miotQuery);
+ while (WiFi.status() != WL_CONNECTED) {//连线成功后停止跳点
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+  server.begin();
+  Serial.println("Server started");
+  
+  Serial.println(WiFi.localIP());
+  open_door();
+  Serial.println("servo test ok");
+  pinMode(2,OUTPUT);
+  digitalWrite(2,HIGH);
+}
+
+void loop() {
+  // Check if a client has connected
+  Blinker.run();
+  server_run();
+  if(oState){
+    open_door();
+  }
 }
