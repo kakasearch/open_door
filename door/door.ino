@@ -1,6 +1,7 @@
 #define BLINKER_WIFI
 #define BLINKER_PRINT Serial
 #define BLINKER_MIOT_OUTLET
+#define BLINKER_DUEROS_OUTLET
 #define BLINKER_WITHOUT_SSL
 #include <Blinker.h>
 #include <ESP8266WiFi.h>
@@ -64,6 +65,22 @@ void miotPowerState(const String & state)
         oState = false;
     }
 }
+void DuerOSPowerState(const String & state)
+{
+    BLINKER_LOG("need set power state: ", state);
+
+    if (state == BLINKER_CMD_ON) {
+        BlinkerDuerOS.powerState("on");
+        BlinkerDuerOS.print();
+        oState = true;
+    }
+    else if (state == BLINKER_CMD_OFF) {
+        BlinkerDuerOS.powerState("off");
+        BlinkerDuerOS.print();
+        oState = false;
+    }
+}
+
 
 void miotQuery(int32_t queryCode)
 {
@@ -97,6 +114,29 @@ void dataRead(const String & data)
     uint32_t BlinkerTime = millis();
     
     Blinker.print("millis", BlinkerTime);
+}
+
+void duerQuery(int32_t queryCode)
+{
+    BLINKER_LOG("DuerOS Query codes: ", queryCode);
+
+    switch (queryCode)
+    {
+        case BLINKER_CMD_QUERY_POWERSTATE_NUMBER :        
+            BLINKER_LOG("DuerOS Query power state");
+            BlinkerDuerOS.powerState(oState ? "on" : "off");
+            BlinkerDuerOS.print();
+            break;
+        case BLINKER_CMD_QUERY_TIME_NUMBER :
+            BLINKER_LOG("DuerOS Query time");
+            BlinkerDuerOS.time(millis());
+            BlinkerDuerOS.print();
+            break;
+        default :
+            BlinkerDuerOS.powerState(oState ? "on" : "off");
+            BlinkerDuerOS.print();
+            break;
+    }
 }
 
 
@@ -137,9 +177,15 @@ void setup() {
   // 初始化blinker
   BLINKER_DEBUG.stream(Serial);
   Blinker.begin(blinksk,STASSID,STAPSK);
-   Blinker.attachData(dataRead);
-    BlinkerMIOT.attachPowerState(miotPowerState);
-    BlinkerMIOT.attachQuery(miotQuery);
+  Blinker.attachData(dataRead);
+  BlinkerMIOT.attachPowerState(miotPowerState);
+  BlinkerMIOT.attachQuery(miotQuery);
+
+  BlinkerDuerOS.attachPowerState(DuerOSPowerState);
+  BlinkerDuerOS.attachQuery(duerQuery);
+
+
+
  while (WiFi.status() != WL_CONNECTED) {//连线成功后停止跳点
     delay(500);
     Serial.print(".");
