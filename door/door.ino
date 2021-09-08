@@ -40,12 +40,10 @@ void beep(){
   } 
 void open_door() {
   ServoControl(mind);
-  delay(10*(maxd-mind));
   beep();
-  delay(5000);
+  delay(15000);
   ServoControl(maxd); 
   tone(buzzerPin,800,500);
-  delay(2000);
   oState = false;
 }
 
@@ -195,7 +193,7 @@ void setup() {
   Serial.println("Server started");
   
   Serial.println(WiFi.localIP());
-  open_door();
+  //open_door();
   Serial.println("servo test ok");
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
