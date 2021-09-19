@@ -17,7 +17,7 @@
 //D6
 #define ServoPin 14 //d5
 WiFiServer server(35614);//开启板子的port 80
-bool oState = false;
+bool oState = 0;
 void ServoControl(int servoAngle)
 {
   double thisAngle =  (servoAngle - 0) * 2000 / (180.0) + 500; map(servoAngle, 0, 180, 500, 2500);//等比例角度值范围转换高电平持续时间范围
@@ -38,13 +38,13 @@ void beep(){
     delay(1000);
   };
   } 
-void open_door() {
+void open_door(int interval) {
   ServoControl(mind);
   beep();
-  delay(15000);
+  delay(interval);
   ServoControl(maxd); 
   tone(buzzerPin,800,500);
-  oState = false;
+  oState = 0;
 }
 
 
@@ -55,12 +55,12 @@ void miotPowerState(const String & state)
     if (state == BLINKER_CMD_ON) {
         BlinkerMIOT.powerState("on");
         BlinkerMIOT.print();
-        oState = true;
+        oState = 1;
     }
     else if (state == BLINKER_CMD_OFF) {
         BlinkerMIOT.powerState("off");
         BlinkerMIOT.print();
-        oState = false;
+        oState = 0;
     }
 }
 void DuerOSPowerState(const String & state)
@@ -70,12 +70,12 @@ void DuerOSPowerState(const String & state)
     if (state == BLINKER_CMD_ON) {
         BlinkerDuerOS.powerState("on");
         BlinkerDuerOS.print();
-        oState = true;
+        oState = 2;
     }
     else if (state == BLINKER_CMD_OFF) {
         BlinkerDuerOS.powerState("off");
         BlinkerDuerOS.print();
-        oState = false;
+        oState = 0;
     }
 }
 
@@ -159,7 +159,7 @@ void server_run(){
   // 比对收到的讯息，确定执行什么操作
   if (req.indexOf("?gpio=on") != -1){
     Serial.println("open door");//打印出收到的讯息
-    oState = true;
+    oState = 3;
   }else {
     Serial.println("invalid request");
   }
@@ -203,7 +203,14 @@ void loop() {
   // Check if a client has connected
   Blinker.run();
   server_run();
-  if(oState){
-    open_door();
+  if(oState == 1){
+    open_door(15000);
   }
+  if(oState ==2){
+    open_door(8000);
+  }
+  if(oState == 3){
+    open_door(15000);
+  }
+
 }
