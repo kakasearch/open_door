@@ -13,6 +13,8 @@
 
 #define maxd 180
 #define mind 5
+#define led 5
+//D1
 #define buzzerPin 12 
 //D6
 #define ServoPin 14 //d5
@@ -20,6 +22,8 @@ WiFiServer server(35614);//开启板子的port 80
 bool oState = 0;
 void ServoControl(int servoAngle)
 {
+  Serial.println("servo");
+  Serial.println(servoAngle);
   double thisAngle =  (servoAngle - 0) * 2000 / (180.0) + 500; map(servoAngle, 0, 180, 500, 2500);//等比例角度值范围转换高电平持续时间范围
   unsigned char i = 50;//50Hz 每秒的周期次数(周期/秒) 即1S 50 个周期 每个周期20ms
   while (i--)
@@ -40,11 +44,13 @@ void beep(){
   } 
 void open_door(int interval) {
   ServoControl(mind);
-  beep();
+  //beep();
+  digitalWrite(led, HIGH);
   delay(interval);
   ServoControl(maxd); 
-  tone(buzzerPin,800,500);
+  //tone(buzzerPin,800,500);
   oState = 0;
+  digitalWrite(led, LOW);
 }
 
 
@@ -169,6 +175,7 @@ void server_run(){
 void setup() {
   pinMode(buzzerPin,OUTPUT);
   pinMode(ServoPin,OUTPUT);
+  pinMode(led,OUTPUT);
   Serial.begin(115200);//开启端口，速度为115200
   // Connect to WiFi network
   Serial.print("Connecting to ");  
