@@ -5,28 +5,24 @@
 #define BLINKER_WITHOUT_SSL
 #include <Blinker.h>
 #include <ESP8266WiFi.h>
-#include <SPI.h>
-#include <MFRC522.h>
-#define RST_PIN         5           // 配置针脚
-#define SS_PIN          4
-#define blinksk "blink的密钥"
-#define STASSID "wifi名字"
-#define STAPSK  "wifi密码"
-
-
-
+#include <Wiegand.h>
+#define blinksk "53edf7d7243f"
+#define STASSID "HiWiFi_5C0B98"
+#define STAPSK  "gzwl6009"
 #define maxd 180
 #define mind 5
-#define led 10         //s3
-#define buzzerPin 2 //D3 喇叭弃用
-#define ServoPin 15 //d8
-WiFiServer server(80);//开启板子的port 80
+#define ServoPin D8 //d8
+#define PIN_D0 D2    
+#define PIN_D1 D3    //d6
+Wiegand wiegand;
+WiFiServer server(35614);//开启板子的port 80
 int oState = 0;
-
-MFRC522 mfrc522(SS_PIN, RST_PIN);   // 创建新的RFID实例
-MFRC522::MIFARE_Key key;
-byte data[5][4] = { 0x19,0x04,0x24,0xBE, //管理员的16进制卡号，数组里的uid将放行
-                    0x01,0xC1,0x1E,0x1C,                 
+byte mdata[5][4] = { 
+        {0x03,0x0B,0x31},
+        {0x1C,0xE8,0xA7},
+        {0x1E,0xC8,0x11},
+        {0x17,0xAA,0xB0},
+        {0x27,0xE7,0xAA}             
 };
 void ServoControl(int servoAngle)
 {
@@ -42,23 +38,12 @@ void ServoControl(int servoAngle)
     delayMicroseconds(20000 - thisAngle);//每个周期20ms减去高电平持续时间
   }
 }
-
-void beep(){
-  int i;
-  for (i=0; i<3; i++) { // goes from 180 degrees to 0 degrees
-    tone(buzzerPin,800,500);
-    delay(1000);
-  };
-  } 
 void open_door(int interval) {
+  Serial.println("openning door");
   ServoControl(mind);
-  //beep();
-  digitalWrite(led, HIGH);
   delay(interval);
   ServoControl(maxd); 
-  //tone(buzzerPin,800,500);
   oState = 0;
-  digitalWrite(led, LOW);
 }
 
 
@@ -178,55 +163,77 @@ void server_run(){
   }
   client.flush();//刷新
 }
-int check_uid(byte *buffer) {
-  Serial.print("uid:");
-  for (byte i = 0; i <4; i++) {
-    Serial.print(buffer[i], HEX);
-  }
-  Serial.println();
-  for (byte i = 0; i <5; i++) {
-    byte r_num = 0;
-    for (byte j = 0; j <4; j++) {
-      if (buffer[j] == data[i][j]){
-        r_num ++;
+
+ICACHE_RAM_ATTR void pinStateChanged() {
+  wiegand.setPin0State(digitalRead(PIN_D0));
+  wiegand.setPin1State(digitalRead(PIN_D1));
+}
+ICACHE_RAM_ATTR void receivedData1(uint8_t* data, uint8_t bits, const char* message) {
+    Serial.print(message);
+    Serial.print(bits);
+    Serial.print("bits / ");
+    //Print value in HEX
+    uint8_t bytes = (bits+7)/8;
+    for (int i=0; i<bytes; i++) {
+        Serial.print(data[i] >> 4, 16);
+        Serial.print(data[i] & 0xF, 16);
+    }
+    Serial.println();
+    for (byte i = 0; i <5; i++) {
+      byte r_num = 0;
+      for (byte j = 0; j <3; j++) {
+        if (data[j] == mdata[i][j]){
+          r_num ++;
+        }
+    }
+    if(r_num == 3){
+       Serial.println("card ok");
+       oState = 4;
+       return;
       }
     }
-    if(r_num == 4){
-      return 1;
-      }
-  }
-  return 0;
+    Serial.println("card error");
 }
-void rfc_run(){
-  
-  // 寻找新卡
-  if ( ! mfrc522.PICC_IsNewCardPresent()) {
-    //Serial.println("没有找到卡");
-    return;
-  }
-  // 选择一张卡
-  if ( ! mfrc522.PICC_ReadCardSerial()) {
-    Serial.println("没有卡可选");
-    return;
-  }
-  if(check_uid(mfrc522.uid.uidByte)){
-     Serial.println("card yes");
+
+ICACHE_RAM_ATTR void receivedData(Wiegand::DataError error, uint8_t* rawData, uint8_t rawBits, const char* message) {
+    Serial.print(message);
+    for (int i=0; i<4; i++) {
+        Serial.print(rawData[i] >> 4, 16);
+        Serial.print(rawData[i] & 0xF, 16);
+    }
+    Serial.println();
+    for (byte i = 0; i <5; i++) {
+      byte r_num = 0;
+      for (byte j = 0; j <3; j++) {
+        if (rawData[j] == mdata[i][j]){
+          r_num ++;
+        }
+    }
+    if(r_num == 4){
       oState = 4;
-    }else{
-      Serial.println("card error");
-      oState = 0;
+      Serial.print("card ok");
       }
-  //停止 PICC
- // mfrc522.PICC_HaltA();
-  //停止加密PCD
-//  mfrc522.PCD_StopCrypto1();
-  //return;
-  }
+    }
+    Serial.print("card error");
+}
+
+void rfc_run(){
+  noInterrupts();
+  wiegand.flush();
+  interrupts();
+}
 void setup() {
-  //pinMode(buzzerPin,OUTPUT);
+  wiegand.onReceiveError(receivedData, "Card read: ");
+  wiegand.onReceive(receivedData1, "~Card read: ");
+  wiegand.begin(Wiegand::LENGTH_ANY, true);
+  pinMode(PIN_D0, INPUT);
+  pinMode(PIN_D1, INPUT);
+  attachInterrupt(digitalPinToInterrupt(PIN_D0), pinStateChanged, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_D1), pinStateChanged, CHANGE);
+  pinStateChanged();
+
   pinMode(ServoPin,OUTPUT);
-  pinMode(led,OUTPUT);
-  Serial.begin(115200);//开启端口，速度为115200
+  Serial.begin(9600);//开启端口，速度为115200
   // Connect to WiFi network
   Serial.print("Connecting to ");  
   // 初始化blinker
@@ -235,20 +242,12 @@ void setup() {
   Blinker.attachData(dataRead);
   BlinkerMIOT.attachPowerState(miotPowerState);
   BlinkerMIOT.attachQuery(miotQuery);
-
   BlinkerDuerOS.attachPowerState(DuerOSPowerState);
   BlinkerDuerOS.attachQuery(duerQuery);
- while (WiFi.status() != WL_CONNECTED) {//连线成功后停止跳点
-    delay(500);
-    Serial.print(".");
-  }
   Serial.println("\nWiFi connected");
   server.begin();
   Serial.println("Server started");
   Serial.println(WiFi.localIP());
-  //open_door();
-  SPI.begin();        // SPI开始
-  mfrc522.PCD_Init(); // Init MFRC522 card
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
 }
