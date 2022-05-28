@@ -5,25 +5,33 @@
 #define BLINKER_WITHOUT_SSL
 #include <Blinker.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
 #include <Wiegand.h>
-#define blinksk "53edf7d7243f"
-#define STASSID "HiWiFi_5C0B98"
-#define STAPSK  "gzwl6009"
-#define maxd 180
-#define mind 5
-#define ServoPin D8 //d8
-#define PIN_D0 D2    
-#define PIN_D1 D3    //d6
-Wiegand wiegand;
-WiFiServer server(35614);//开启板子的port 80
-int oState = 0;
-byte mdata[5][4] = { 
-        {0x03,0x0B,0x31},
+#define maxd 180 //最大舵机偏转角度
+#define mind 5 //最小舵机偏转角度
+#define ServoPin D8 //d8 舵机引脚
+#define PIN_D0 D2   //IC卡读卡器引脚0
+#define PIN_D1 D3    // IC读卡器引脚1
+
+
+#define blinksk "12312323123" //blinker的sk,需要自己去blinker注册
+#define STASSID "HiWiFi_5C0B98" //wifi名称
+#define STAPSK  "60096009" //wifi密码
+#define len_users 7 //用户数量
+#define len_card 3 //卡号长度，注意与下面匹配
+byte users[len_users][len_card] = { 
+        {0x03,0x0B,0x31},//IC卡卡号
         {0x1C,0xE8,0xA7},
         {0x1E,0xC8,0x11},
         {0x17,0xAA,0xB0},
-        {0x27,0xE7,0xAA}             
+        {0x27,0xE7,0xAA},
+        {0x9F,0x7A,0xCA},
 };
+ESP8266WebServer server(35614);//自定义的网络端口号
+
+Wiegand wiegand;
+int oState = 0;
+//////////////执行开关门动作
 void ServoControl(int servoAngle)
 {
   Serial.println("servo");
@@ -45,8 +53,7 @@ void open_door(int interval) {
   ServoControl(maxd); 
   oState = 0;
 }
-
-
+///////////////////语音助手
 void miotPowerState(const String & state)
 {
     BLINKER_LOG("need set power state: ", state);
@@ -136,34 +143,37 @@ void duerQuery(int32_t queryCode)
     }
 }
 
-
-void server_run(){
-    WiFiClient client = server.available();
-  if (!client) {
-    return;
-  }
-  // Wait until the client sends some data
-  Serial.println("new client");
-  while(!client.available()){
-    delay(1);
-  }
-  // Read the first line of the request
-  String req = client.readStringUntil('\r');
-  Serial.println(req);//打印出收到的讯息
-  client.flush();//流刷新，如果不flush，那么可能就堵塞了
-    // Prepare the response
-  String s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\n ok!\n";
-  // Send the response to the client
-  client.print(s);
-  // 比对收到的讯息，确定执行什么操作
-  if (req.indexOf("?gpio=on") != -1){
-    oState = 3;
-  }else {
-    Serial.println("invalid request");
-  }
-  client.flush();//刷新
+//////////////////web服务器控制
+void homepage() {
+  server.send(200, "text/plain", "ok !");
+  Serial.println("用户访问了网页");
+  oState = 3;
+}
+void handleNotFound() {                                       // 当浏览器请求的网络资源无法在服务器找到时，
+  server.send(404, "text/plain", "404: Not found");           // NodeMCU将调用此函数。
 }
 
+///////////////////////读卡器控制
+void check_card(uint8_t* rawData){
+      for (byte i = 0; i <len_users; i++) {
+    //遍历每张卡 
+      byte r_num = 0;
+      Serial.print("读卡：");
+      Serial.println(i);
+      for (byte j = 0; j <len_card; j++) {
+        if (rawData[j] == users[i][j]){
+          r_num ++;
+        }
+    }
+    if(r_num == len_card){
+    //判断卡id是否正确
+      oState = 4;
+      Serial.print("card ok");
+      return;
+      }
+    }
+    Serial.print("card error");
+}
 ICACHE_RAM_ATTR void pinStateChanged() {
   wiegand.setPin0State(digitalRead(PIN_D0));
   wiegand.setPin1State(digitalRead(PIN_D1));
@@ -173,26 +183,14 @@ ICACHE_RAM_ATTR void receivedData1(uint8_t* data, uint8_t bits, const char* mess
     Serial.print(bits);
     Serial.print("bits / ");
     //Print value in HEX
+    Serial.print(bits);
     uint8_t bytes = (bits+7)/8;
     for (int i=0; i<bytes; i++) {
         Serial.print(data[i] >> 4, 16);
         Serial.print(data[i] & 0xF, 16);
     }
     Serial.println();
-    for (byte i = 0; i <5; i++) {
-      byte r_num = 0;
-      for (byte j = 0; j <3; j++) {
-        if (data[j] == mdata[i][j]){
-          r_num ++;
-        }
-    }
-    if(r_num == 3){
-       Serial.println("card ok");
-       oState = 4;
-       return;
-      }
-    }
-    Serial.println("card error");
+    check_card(data);
 }
 
 ICACHE_RAM_ATTR void receivedData(Wiegand::DataError error, uint8_t* rawData, uint8_t rawBits, const char* message) {
@@ -202,26 +200,17 @@ ICACHE_RAM_ATTR void receivedData(Wiegand::DataError error, uint8_t* rawData, ui
         Serial.print(rawData[i] & 0xF, 16);
     }
     Serial.println();
-    for (byte i = 0; i <5; i++) {
-      byte r_num = 0;
-      for (byte j = 0; j <3; j++) {
-        if (rawData[j] == mdata[i][j]){
-          r_num ++;
-        }
-    }
-    if(r_num == 4){
-      oState = 4;
-      Serial.print("card ok");
-      }
-    }
-    Serial.print("card error");
+    check_card(rawData);
 }
-
 void rfc_run(){
   noInterrupts();
   wiegand.flush();
   interrupts();
 }
+
+
+
+///////////////////////程序入口
 void setup() {
   wiegand.onReceiveError(receivedData, "Card read: ");
   wiegand.onReceive(receivedData1, "~Card read: ");
@@ -233,7 +222,7 @@ void setup() {
   pinStateChanged();
 
   pinMode(ServoPin,OUTPUT);
-  Serial.begin(9600);//开启端口，速度为115200
+  Serial.begin(115200);//开启端口，速度为115200
   // Connect to WiFi network
   Serial.print("Connecting to ");  
   // 初始化blinker
@@ -245,8 +234,10 @@ void setup() {
   BlinkerDuerOS.attachPowerState(DuerOSPowerState);
   BlinkerDuerOS.attachQuery(duerQuery);
   Serial.println("\nWiFi connected");
+  //初始化WebServer
+  server.on("/gpio", homepage);
   server.begin();
-  Serial.println("Server started");
+  Serial.println("HTTP server started");
   Serial.println(WiFi.localIP());
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
@@ -255,8 +246,9 @@ void setup() {
 void loop() {
   // Check if a client has connected
   Blinker.run();
-  server_run();
+  server.handleClient();
   rfc_run();
+  // 不同途径开门会导致不同的开门等待时间
   if(oState == 1){
     open_door(15000);
   }
