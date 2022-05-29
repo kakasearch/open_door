@@ -2,30 +2,27 @@
 #define BLINKER_PRINT Serial
 #define BLINKER_MIOT_OUTLET
 #define BLINKER_DUEROS_OUTLET
+#define BLINKER_ALIGENIE_OUTLET
 #define BLINKER_WITHOUT_SSL
 #include <Blinker.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <Wiegand.h>
-#define maxd 180 //最大舵机偏转角度
-#define mind 5 //最小舵机偏转角度
+#define maxd 180 //开门时舵机偏转角度
+#define mind 5 //关门时舵机偏转角度
 #define ServoPin D8 //d8 舵机引脚
 #define PIN_D0 D2   //IC卡读卡器引脚0
-#define PIN_D1 D3    // IC读卡器引脚1
+#define PIN_D1 D3    //d6  IC读卡器引脚1
 
 
-#define blinksk "12312323123" //blinker的sk,需要自己去blinker注册
-#define STASSID "HiWiFi_5C0B98" //wifi名称
-#define STAPSK  "60096009" //wifi密码
-#define len_users 7 //用户数量
-#define len_card 3 //卡号长度，注意与下面匹配
+#define blinksk "sksksksksksksksk" //blinker的sk,需要自己去blinker注册
+#define STASSID "wifiwifiwifi" //wifi名称
+#define STAPSK  "password" //wifi密码
+#define len_users 2 //用户数量
+#define len_card 3 //卡号长度，1-3
 byte users[len_users][len_card] = { 
-        {0x03,0x0B,0x31},//IC卡卡号
-        {0x1C,0xE8,0xA7},
-        {0x1E,0xC8,0x11},
-        {0x17,0xAA,0xB0},
-        {0x27,0xE7,0xAA},
-        {0x9F,0x7A,0xCA},
+        {0x34,,0x11,ox9F},
+        {0x32,,0x12,ox92},
 };
 ESP8266WebServer server(35614);//自定义的网络端口号
 
@@ -85,6 +82,25 @@ void DuerOSPowerState(const String & state)
     }
 }
 
+void aligeniePowerState(const String & state)
+{
+    BLINKER_LOG("need set power state: ", state);
+
+    if (state == BLINKER_CMD_ON) {
+        digitalWrite(LED_BUILTIN, HIGH);
+
+        BlinkerAliGenie.powerState("on");
+        BlinkerAliGenie.print();
+        oState = 2;
+    }
+    else if (state == BLINKER_CMD_OFF) {
+        digitalWrite(LED_BUILTIN, LOW);
+
+        BlinkerAliGenie.powerState("off");
+        BlinkerAliGenie.print();
+        oState = 0;
+    }
+}
 
 void miotQuery(int32_t queryCode)
 {
@@ -158,21 +174,25 @@ void check_card(uint8_t* rawData){
       for (byte i = 0; i <len_users; i++) {
     //遍历每张卡 
       byte r_num = 0;
-      Serial.print("读卡：");
-      Serial.println(i);
+      Serial.print("验证卡号：");
+      for (byte j = 0; j <len_card; j++) {
+        Serial.print(users[i][j] >> 4, 16);
+        Serial.print(users[i][j] & 0xF, 16);
+    }
+     Serial.println();
       for (byte j = 0; j <len_card; j++) {
         if (rawData[j] == users[i][j]){
           r_num ++;
-        }
+        };
     }
     if(r_num == len_card){
     //判断卡id是否正确
       oState = 4;
-      Serial.print("card ok");
+      Serial.println("card ok");
       return;
       }
     }
-    Serial.print("card error");
+    Serial.println("card error");
 }
 ICACHE_RAM_ATTR void pinStateChanged() {
   wiegand.setPin0State(digitalRead(PIN_D0));
@@ -181,9 +201,8 @@ ICACHE_RAM_ATTR void pinStateChanged() {
 ICACHE_RAM_ATTR void receivedData1(uint8_t* data, uint8_t bits, const char* message) {
     Serial.print(message);
     Serial.print(bits);
-    Serial.print("bits / ");
+    Serial.print("bits, 卡号：");
     //Print value in HEX
-    Serial.print(bits);
     uint8_t bytes = (bits+7)/8;
     for (int i=0; i<bytes; i++) {
         Serial.print(data[i] >> 4, 16);
@@ -233,6 +252,7 @@ void setup() {
   BlinkerMIOT.attachQuery(miotQuery);
   BlinkerDuerOS.attachPowerState(DuerOSPowerState);
   BlinkerDuerOS.attachQuery(duerQuery);
+  BlinkerAliGenie.attachPowerState(aligeniePowerState);
   Serial.println("\nWiFi connected");
   //初始化WebServer
   server.on("/gpio", homepage);
@@ -250,15 +270,19 @@ void loop() {
   rfc_run();
   // 不同途径开门会导致不同的开门等待时间
   if(oState == 1){
+  //小爱同学开门
     open_door(15000);
   }
   if(oState ==2){
+  //其他语音助手开门
     open_door(8000);
   }
   if(oState == 3){
+  //通过http开门
     open_door(15000);
   }
   if(oState == 4){
+  //通过刷卡开门
     open_door(5000);
   }
 }
