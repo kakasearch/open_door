@@ -10,6 +10,7 @@
 - 支持刷卡开门
 
 # 需要的元件
+
 1. nodemcu 或者arduino+esp8266
 2. wegend协议读卡模块或rc522模块
 3. 舵机
@@ -28,7 +29,6 @@
 #define STASSID "HiWiFi_5C0B98" //wifi名称
 #define STAPSK  "60096009" //wifi密码
 #define len_users 6 //用户数量
-#define len_card 3 //卡号长度，注意与下面匹配
 byte users[len_users][len_card] = { 
         {0x03,0x0B,0x31},//IC卡卡号
         {0x1C,0xE8,0xA7},
@@ -65,3 +65,7 @@ def openTheDoor():
     request.post(api,headers=headers,data=data)
 
 ```
+
+# 其他
+
+<Wiegand.h>库可以在库管理器中搜索"Yet Another Arduino Wiegand Library" 安装
